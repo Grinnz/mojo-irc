@@ -328,14 +328,19 @@ sub ctcp {
 
 =head2 disconnect
 
-  $self->disconnect(\&callback);
+  $self->disconnect($msg, \&callback);
 
-Will disconnect form the server and run the callback once it is done.
+Will disconnect from the server, with an optional quit message, and run the
+callback once it is done.
 
 =cut
 
 sub disconnect {
-  my ($self, $cb) = @_;
+  no warnings 'utf8';
+  my $cb   = ref $_[-1] eq 'CODE' ? pop : sub { };
+  my $self = shift;
+  my $msg  = defined $_[0] ? Unicode::UTF8::encode_utf8($_[0], sub { $_[0] })
+    : undef;
 
   if (my $tid = delete $self->{ping_tid}) {
     $self->ioloop->remove($tid);
@@ -343,16 +348,17 @@ sub disconnect {
 
   if ($self->{stream}) {
     Scalar::Util::weaken($self);
+    my $quit_msg = defined $msg ? "QUIT :$msg\r\n" : "QUIT\r\n";
     $self->{stream}->write(
-      "QUIT\r\n",
+      $quit_msg,
       sub {
         $self->{stream}->close;
-        $self->$cb if $cb;
+        $self->$cb;
       }
     );
   }
   else {
-    $self->$cb if $cb;
+    $self->$cb;
   }
 
   $self;
